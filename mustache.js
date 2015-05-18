@@ -1,66 +1,143 @@
 /**
  * Mustache parser
- * @param DOMElement element
- * @param object context Template variables
+ * @param string txt Input text
+ * @param array data Data as array
  */
-function mustache(element, context, index) {
-	// text node
-	if (element.nodeType == 3) {
-		var cond = element.nodeValue.match(mustache.cd);
-		// conditional
-		if (cond) {
-			// new or closing conditional
-			if (!index || (cond[1] == '/' &&  cond[2] == index)) {
-				element.nodeValue = '';
-				return cond.slice(1);
-			}
-		}
-		// variables
-		else {
-			element.nodeValue = element.nodeValue.replace(mustache.vr, function(m, name) {
-				return name == '.' ? context : context[name];
-			});
-		}
-	}
-	// tag node
-	else if (!index) {
-		for (var i=0, sub; i < element.childNodes.length; i++) {
-			if (element.childNodes[i].nodeType != 8 && element.childNodes[i].nodeName != 'SCRIPT') {
-				sub = mustache(element.childNodes[i], context, index);
-				// conditional
-				if (sub) {
-					// open
-					if (sub[0] == '#') {
-						var ret = [], cln = [];
-						index = sub[1];
+function mustache(txt, data) {
+	var stw = '{{',
+		enw = '}}',
+		cur = 0,
+		prs = false,
+		ret = '',
+		mke = '',
+		rtv = '',
+		rtt = '',
+		tmp = '',
+		stk = 0,
+		mke,
+		ope,
+		ctx,
+		sub,
+		val,
+		prv;
+	
+	for (var c='', i=0; i < txt.length; i++) {
+		c = txt.charAt(i);
+		if (prs) {
+			if (c == enw[cur]) {
+				cur++;
+				if (cur == enw.length) {
+					// variable and operator
+					if (['#', '^', '/'].indexOf(mke.charAt(0)) > -1) {
+						ope = mke.charAt(0);
+						mke = mke.substr(1);
 					}
-					// close
 					else {
-						// each context value
-						for (var j=0, k, base=[], tgt; j < context[index].length; j++) {
-							// each element retrieved
-							for (k=0; k < ret.length; k++) {
-								// first interaction
-								if (!j) {
-									tgt = ret[k];
-									base.push(tgt.cloneNode(true));
+						ope = '';
+					}
+					
+					val = '';
+					// search value in multiples context
+					for (ctx in data) {
+						if (data[ctx].constructor == Object && mke in data[ctx]) {
+							val = data[ctx][mke];
+							break;
+						}
+					}
+					
+					// conditional dependent
+					if (rtv) {
+						// closing previous operation
+						if (ope == '/' && mke == rtv && stk == 1) {
+							if (prv == '#' && val) {
+								if (val.constructor == Array) {
+									for (sub in val) {
+										ret += mustache(rtt, [val[sub]].concat(data));
+									}
 								}
 								else {
-									tgt = base[k].cloneNode(true);
-									ret[0].parentNode.appendChild(tgt);
+									ret += mustache(rtt, [val].concat(data));
 								}
-								mustache(tgt, context[index][j]);
+							}
+							else if (prv == '^' && !val) {
+								ret += mustache(rtt, data);
+							}
+							rtv = '';
+							rtt = '';
+							stk = 0;
+						}
+						// new operation
+						else {
+							if (mke == rtv) {
+								if (ope == '#') {
+									stk++;
+								}
+								else if (ope == '/') {
+									stk--;
+								}
+							}
+							rtt += stw + ope + mke + enw;
+						}
+					}
+					else {
+						if (ope) {
+							prv = ope;
+							rtv = mke;
+							stk++;
+						}
+						else {
+							if (mke == '.') {
+								ret += data[0];
+							}
+							else {
+								ret += val;
 							}
 						}
 					}
+					prs = false;
+					cur = 0;
+					mke = '';
 				}
-				else if (index) {
-					ret.push(element.childNodes[i]);
+				continue;
+			}
+			else {
+				cur = 0;
+			}
+			
+			// skipped characteres
+			if (c == '\t' || c == ' ')
+				continue;
+			
+			mke += c;
+		}
+		else {
+			if (c == stw.charAt(cur)) {
+				cur++;
+				if (cur == stw.length) {
+					prs = true;
+					cur = 0;
+					tmp = '';
+					continue;
+				}
+				else {
+					tmp += c;
+				}
+			}
+			else {
+				if (tmp) {
+					c = tmp + c;
+					tmp = '';
+				}
+				cur = 0;
+				if (rtv) {
+					rtt += c;
+				}
+				else {
+					ret += c;
 				}
 			}
 		}
 	}
+	
+	return ret;
 }
-
-mustache.vr = /{{([^}]+)}}/g;
-mustache.cd = /{{([#\/])([^}]+)}}/;
